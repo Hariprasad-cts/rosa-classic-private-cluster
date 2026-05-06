@@ -3,6 +3,11 @@ variable "cluster_name" {
   description = "ROSA cluster name."
 }
 
+variable "create_admin_user" {
+  type        = bool
+  description = "Create a default cluster admin user with generated password."
+}
+
 variable "aws_region" {
   type        = string
   description = "AWS region."
@@ -53,10 +58,6 @@ variable "machine_pool_name" {
   description = "Name of the additional machine pool for worker nodes."
 }
 
-variable "idp_name" {
-  type        = string
-  description = "Name of the HTPasswd identity provider created in the cluster."
-}
 
 variable "worker_instance_type" {
   type        = string
@@ -98,18 +99,6 @@ variable "oidc_endpoint_url" {
   description = "OIDC provider URL from iam module."
 }
 
-variable "admin_username" {
-  type        = string
-  description = "Admin username for HTPasswd IDP."
-  default     = "cluster-admin"
-}
-
-variable "admin_password" {
-  type        = string
-  description = "Admin password. Auto-generated if null."
-  default     = null
-  sensitive   = true
-}
 
 variable "tags" {
   type        = map(string)

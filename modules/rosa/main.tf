@@ -37,6 +37,7 @@ resource "rhcs_cluster_rosa_classic" "this" {
   compute_machine_type     = var.worker_instance_type
   replicas                 = var.worker_node_count
   wait_for_create_complete = true
+  create_admin_user        = true
 
   sts = {
     managed_policies     = true
@@ -79,26 +80,5 @@ resource "rhcs_machine_pool" "workers" {
   depends_on = [rhcs_cluster_rosa_classic.this]
 }
 
-# Auto-generated admin password (used if admin_password variable is null)
-resource "random_password" "admin" {
-  length           = 16
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}:?"
-}
 
-# HTPasswd Identity Provider -- initial admin access
-# After cluster is ready, grant cluster-admin via:
-#   rosa grant user cluster-admin --user <username> --cluster <cluster-name>
-resource "rhcs_identity_provider" "htpasswd" {
-  cluster = rhcs_cluster_rosa_classic.this.id
-  name    = var.idp_name
 
-  htpasswd = {
-    users = [{
-      username = var.admin_username
-      password = var.admin_password != null ? var.admin_password : random_password.admin.result
-    }]
-  }
-
-  depends_on = [rhcs_cluster_rosa_classic.this]
-}
