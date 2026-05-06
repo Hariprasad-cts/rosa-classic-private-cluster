@@ -127,26 +127,7 @@ variable "machine_pool_name" {
   default     = "worker-pool"
 }
 
-variable "idp_name" {
-  description = "Name of the HTPasswd identity provider created in the cluster."
-  type        = string
-  default     = "cluster-admin-idp"
-}
 
-# Cluster Admin
-
-variable "admin_username" {
-  description = "HTPasswd IDP username for the cluster-admin account."
-  type        = string
-  default     = "cluster-admin"
-}
-
-variable "admin_password" {
-  description = "Password for cluster-admin. Leave null to auto-generate."
-  type        = string
-  sensitive   = true
-  default     = null
-}
 
 # Tags
 

@@ -49,7 +49,7 @@ terraform {
   # backend "s3" {
   #   bucket         = "rosa-terraform-state-<ACCOUNT_ID>"
   #   key            = "rosa/terraform.tfstate"
-  #   region         = "us-east-1"
+  #   region         = "us-west-1"
   #   dynamodb_table = "rosa-terraform-lock"
   #   encrypt        = true
   # }

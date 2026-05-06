@@ -14,6 +14,7 @@
 #   prerequisites.tf -- preflight validation before cluster provisioning
 # ==============================================================================
 
+# This retrieves information about the AWS account that Terraform is currently running
 data "aws_caller_identity" "current" {}
 
 # Module 1: VPC
@@ -57,7 +58,7 @@ module "dns" {
 
 # Module 4: ROSA Cluster
 # Creates: ROSA Classic cluster (private, 5 workers), machine pool,
-#          HTPasswd IDP, cluster-admin user
+#          cluster-admin user
 # This apply blocks for ~35-45 min on first run.
 # Set GitHub Actions job timeout to >= 90 minutes.
 module "rosa" {
@@ -74,12 +75,9 @@ module "rosa" {
   pod_cidr               = var.pod_cidr
   host_prefix            = var.host_prefix
   machine_pool_name      = var.machine_pool_name
-  idp_name               = var.idp_name
   worker_instance_type   = var.worker_instance_type
   worker_node_count      = var.worker_node_count
   worker_disk_size_gb    = var.worker_disk_size_gb
-  admin_username         = var.admin_username
-  admin_password         = var.admin_password
   installer_role_arn     = module.iam.installer_role_arn
   support_role_arn       = module.iam.support_role_arn
   control_plane_role_arn = module.iam.control_plane_role_arn
