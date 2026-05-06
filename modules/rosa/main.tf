@@ -4,24 +4,15 @@
 # Creates the ROSA Classic private cluster and associated resources:
 #
 #   rhcs_cluster_rosa_classic  -- the cluster itself (~40 min first apply)
-#   rhcs_cluster_wait          -- blocks until state = ready
-#   rhcs_machine_pool          -- 5 worker nodes (m5.xlarge)
+#   rhcs_machine_pool          -- worker node pool
 #   random_password            -- auto-generated admin password
 #   rhcs_identity_provider     -- HTPasswd IDP (initial access)
-#   rhcs_group_membership      -- admin user -> cluster-admins group
 #
 # Settings:
 #   private = true          -- API + Ingress NLBs are internal only
 #   aws_private_link = true -- Red Hat SRE access via AWS PrivateLink
 #   multi_az = false        -- 2-AZ workers, single control-plane zone
-#   sts mode = "auto"       -- OIDC/IRSA, no long-lived IAM keys
-#
-# Custom domain (gilead.com):
-#   The Route53 hosted zone is created by the dns module.
-#   The base domain is registered in your Red Hat OCM account separately.
-#   After cluster creation, ROSA auto-creates DNS records in the zone:
-#     api.<cluster>.<base_domain>        -- internal API NLB
-#     *.apps.<cluster>.<base_domain>     -- internal Ingress NLB
+#   wait_for_create_complete -- blocks until cluster reaches ready state
 # ==============================================================================
 
 data "aws_caller_identity" "current" {}
@@ -39,21 +30,15 @@ resource "rhcs_cluster_rosa_classic" "this" {
   pod_cidr           = var.pod_cidr
   host_prefix        = var.host_prefix
 
-  # Private cluster: API + Ingress NLBs are internal only
-  # Access requires VPN or AWS Direct Connect into the VPC
   private          = true
   aws_private_link = true
+  multi_az         = false
 
-  # 2-AZ workers, single control-plane zone
-  multi_az = false
+  compute_machine_type     = var.worker_instance_type
+  replicas                 = var.worker_node_count
+  wait_for_create_complete = true
 
-  # Workers: 5 x m5.xlarge (masters are always 3, managed by Red Hat)
-  compute_machine_type = var.worker_instance_type
-  replicas             = var.worker_node_count
-
-  # STS mode: OIDC/IRSA -- no long-lived IAM keys stored anywhere
   sts = {
-    mode                 = "auto"
     managed_policies     = true
     operator_role_prefix = var.cluster_name
     role_arn             = var.installer_role_arn
@@ -78,16 +63,9 @@ resource "rhcs_cluster_rosa_classic" "this" {
   }
 }
 
-# Wait until cluster reaches "ready" state (~35-45 min)
-# Set GitHub Actions job timeout to >= 90 minutes
-resource "rhcs_cluster_wait" "this" {
-  cluster = rhcs_cluster_rosa_classic.this.id
-  timeout = var.cluster_wait_timeout
-}
-
-# Machine pool -- 5 x m5.xlarge workers for MAS
+# Additional machine pool for worker nodes
 resource "rhcs_machine_pool" "workers" {
-  cluster            = rhcs_cluster_rosa_classic.this.id
+  cluster      = rhcs_cluster_rosa_classic.this.id
   name         = var.machine_pool_name
   machine_type = var.worker_instance_type
   replicas     = var.worker_node_count
@@ -98,7 +76,7 @@ resource "rhcs_machine_pool" "workers" {
     "mas-workload"                   = "true"
   }
 
-  depends_on = [rhcs_cluster_wait.this]
+  depends_on = [rhcs_cluster_rosa_classic.this]
 }
 
 # Auto-generated admin password (used if admin_password variable is null)
@@ -109,10 +87,11 @@ resource "random_password" "admin" {
 }
 
 # HTPasswd Identity Provider -- initial admin access
-# For production: replace with SSO or LDAP IDP
+# After cluster is ready, grant cluster-admin via:
+#   rosa grant user cluster-admin --user <username> --cluster <cluster-name>
 resource "rhcs_identity_provider" "htpasswd" {
   cluster = rhcs_cluster_rosa_classic.this.id
-  name = var.idp_name
+  name    = var.idp_name
 
   htpasswd = {
     users = [{
@@ -121,13 +100,5 @@ resource "rhcs_identity_provider" "htpasswd" {
     }]
   }
 
-  depends_on = [rhcs_cluster_wait.this]
-}
-
-# Add admin user to cluster-admins group
-resource "rhcs_group_membership" "admin" {
-  cluster    = rhcs_cluster_rosa_classic.this.id
-  group      = "cluster-admins"
-  user       = var.admin_username
-  depends_on = [rhcs_identity_provider.htpasswd]
+  depends_on = [rhcs_cluster_rosa_classic.this]
 }

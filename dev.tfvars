@@ -42,7 +42,6 @@ worker_node_count    = 5            # MAS Application Suite requires 5 workers f
 worker_disk_size_gb  = 300          # MAS requires 300 GB per worker node
 
 # ── Cluster Provisioning ──────────────────────────────────────────────────────
-cluster_wait_timeout = 60
 machine_pool_name    = "worker-pool"
 idp_name             = "cluster-admin-idp"
 

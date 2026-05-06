@@ -48,11 +48,6 @@ variable "host_prefix" {
   description = "Subnet prefix length assigned to each node for pod IPs (e.g. 23 = /23 per node)."
 }
 
-variable "cluster_wait_timeout" {
-  type        = number
-  description = "Minutes to wait for the cluster to reach ready state."
-}
-
 variable "machine_pool_name" {
   type        = string
   description = "Name of the additional machine pool for worker nodes."

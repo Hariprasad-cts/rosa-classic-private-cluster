@@ -73,7 +73,6 @@ module "rosa" {
   service_cidr           = var.service_cidr
   pod_cidr               = var.pod_cidr
   host_prefix            = var.host_prefix
-  cluster_wait_timeout   = var.cluster_wait_timeout
   machine_pool_name      = var.machine_pool_name
   idp_name               = var.idp_name
   worker_instance_type   = var.worker_instance_type

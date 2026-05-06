@@ -121,12 +121,6 @@ variable "hosted_zone_id" {
 
 # Cluster Provisioning
 
-variable "cluster_wait_timeout" {
-  description = "Minutes to wait for the ROSA cluster to reach ready state."
-  type        = number
-  default     = 60
-}
-
 variable "machine_pool_name" {
   description = "Name of the additional machine pool for worker nodes."
   type        = string
