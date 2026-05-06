@@ -1,21 +1,33 @@
 # ==============================================================================
 # modules/dns/main.tf
 #
-# Route 53 hosted zone for the custom domain (gilead.com).
+# Two things happen here:
 #
-# New AWS account (create_hosted_zone = true):
-#   1. Terraform creates the public hosted zone
-#   2. After apply: terraform output route53_ns_records
-#   3. Add those 4 NS records at your domain registrar
-#   4. Wait for DNS propagation (minutes to 48 hrs)
-#   5. ROSA then auto-creates DNS records inside this zone:
-#        api.mas-dev-rosa.gilead.com       -- internal API NLB
-#        *.apps.mas-dev-rosa.gilead.com    -- internal Ingress NLB
+#  1. rhcs_dns_domain  -- registers gilead.com with Red Hat OCM so ROSA knows
+#                         which base domain to use for this cluster's API and
+#                         console URLs.  This is the Terraform equivalent of:
+#                           rosa create dns-domain --domain gilead.com
 #
-# Existing zone (create_hosted_zone = false):
-#   Set create_hosted_zone = false and hosted_zone_id = <your zone ID>
+#  2. aws_route53_zone -- creates (or looks up) the Route53 public hosted zone.
+#                         ROSA writes its DNS records (api.*, *.apps.*) here
+#                         after the cluster is ready.
+#
+# After first apply:
+#   terraform output route53_ns_records
+#   -> Add the 4 NS records at your domain registrar for gilead.com.
+#   -> DNS propagation can take minutes to 48 hours.
 # ==============================================================================
 
+# Register the custom domain with Red Hat OCM.
+# This tells ROSA: "use gilead.com as the base domain for this cluster."
+# Equivalent to: rosa create dns-domain --domain <base_domain>
+# Safe to apply multiple times -- OCM is idempotent for existing domains.
+resource "rhcs_dns_domain" "this" {
+  count = var.create_hosted_zone ? 1 : 0
+  id    = var.base_domain
+}
+
+# Create a new Route53 public hosted zone (new AWS account)
 resource "aws_route53_zone" "this" {
   count   = var.create_hosted_zone ? 1 : 0
   name    = var.base_domain
@@ -24,8 +36,11 @@ resource "aws_route53_zone" "this" {
   tags = merge(var.tags, {
     Name = var.base_domain
   })
+
+  depends_on = [rhcs_dns_domain.this]
 }
 
+# Look up an existing hosted zone (when create_hosted_zone = false)
 data "aws_route53_zone" "existing" {
   count        = var.create_hosted_zone ? 0 : 1
   zone_id      = var.hosted_zone_id

@@ -15,6 +15,13 @@
 #   aws_private_link = true -- Red Hat SRE access via AWS PrivateLink
 #   multi_az = false        -- 2-AZ workers, single control-plane zone
 #   sts mode = "auto"       -- OIDC/IRSA, no long-lived IAM keys
+#
+# Custom domain (gilead.com):
+#   The Route53 hosted zone is created by the dns module.
+#   The base domain is registered in your Red Hat OCM account separately.
+#   After cluster creation, ROSA auto-creates DNS records in the zone:
+#     api.<cluster>.<base_domain>        -- internal API NLB
+#     *.apps.<cluster>.<base_domain>     -- internal Ingress NLB
 # ==============================================================================
 
 data "aws_caller_identity" "current" {}
@@ -32,15 +39,19 @@ resource "rhcs_cluster_rosa_classic" "this" {
   pod_cidr           = "10.128.0.0/14"
   host_prefix        = 23
 
+  # Private cluster: API + Ingress NLBs are internal only
+  # Access requires VPN or AWS Direct Connect into the VPC
   private          = true
   aws_private_link = true
 
-  base_domain = var.base_domain
-  multi_az    = false
+  # 2-AZ workers, single control-plane zone
+  multi_az = false
 
+  # Workers: 5 x m5.xlarge (masters are always 3, managed by Red Hat)
   compute_machine_type = var.worker_instance_type
   replicas             = var.worker_node_count
 
+  # STS mode: OIDC/IRSA -- no long-lived IAM keys stored anywhere
   sts = {
     mode                 = "auto"
     managed_policies     = true
