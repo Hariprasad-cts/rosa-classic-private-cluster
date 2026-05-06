@@ -224,7 +224,7 @@ resource "aws_iam_instance_profile" "worker" {
 # OIDC Provider -- registers Red Hat's hosted OIDC issuer in AWS IAM
 # Enables IRSA: operator pod JWT -> STS -> short-lived credentials (no IAM keys)
 resource "aws_iam_openid_connect_provider" "rosa" {
-  url             = "https://rh-oidc.s3.us-east-1.amazonaws.com/${var.cluster_name}"
+  url             = "https://rh-oidc.s3.${var.aws_region}.amazonaws.com/${var.cluster_name}"
   client_id_list  = ["openshift", "sts.amazonaws.com"]
   thumbprint_list = ["9e99a48a9960b14926bb7f3b02e22da2b0ab7280"]
 

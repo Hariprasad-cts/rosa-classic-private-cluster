@@ -59,6 +59,26 @@ variable "public_subnet_cidr" {
   default     = "10.0.8.0/24"
 }
 
+# OpenShift Networking
+
+variable "service_cidr" {
+  description = "OpenShift service network CIDR. Must not overlap VPC, pod, or host OS ranges."
+  type        = string
+  default     = "172.30.0.0/16"
+}
+
+variable "pod_cidr" {
+  description = "OpenShift pod network CIDR. Must not overlap VPC, service, or host OS ranges."
+  type        = string
+  default     = "10.128.0.0/14"
+}
+
+variable "host_prefix" {
+  description = "Subnet prefix length per node for pod IPs (e.g. 23 gives each node a /23)."
+  type        = number
+  default     = 23
+}
+
 # Worker Nodes
 
 variable "worker_instance_type" {
@@ -97,6 +117,26 @@ variable "hosted_zone_id" {
   description = "Existing Route53 zone ID. Used only when create_hosted_zone = false."
   type        = string
   default     = ""
+}
+
+# Cluster Provisioning
+
+variable "cluster_wait_timeout" {
+  description = "Minutes to wait for the ROSA cluster to reach ready state."
+  type        = number
+  default     = 60
+}
+
+variable "machine_pool_name" {
+  description = "Name of the additional machine pool for worker nodes."
+  type        = string
+  default     = "worker-pool"
+}
+
+variable "idp_name" {
+  description = "Name of the HTPasswd identity provider created in the cluster."
+  type        = string
+  default     = "cluster-admin-idp"
 }
 
 # Cluster Admin

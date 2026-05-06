@@ -31,10 +31,20 @@ private_subnet_cidrs = ["10.0.0.0/22", "10.0.4.0/22"]
 # 1 public subnet — NAT Gateway only, no workloads
 public_subnet_cidr = "10.0.8.0/24"
 
+# ── OpenShift Networking ──────────────────────────────────────────────────────
+service_cidr = "172.30.0.0/16"
+pod_cidr     = "10.128.0.0/14"
+host_prefix  = 23
+
 # ── Worker Nodes ──────────────────────────────────────────────────────────────
 worker_instance_type = "m5.xlarge"  # 4 vCPU / 16 GB RAM — ROSA minimum
 worker_node_count    = 5            # MAS Application Suite requires 5 workers for HA
 worker_disk_size_gb  = 300          # MAS requires 300 GB per worker node
+
+# ── Cluster Provisioning ──────────────────────────────────────────────────────
+cluster_wait_timeout = 60
+machine_pool_name    = "worker-pool"
+idp_name             = "cluster-admin-idp"
 
 # ── DNS ───────────────────────────────────────────────────────────────────────
 base_domain        = "gilead.com"

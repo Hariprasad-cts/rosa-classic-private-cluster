@@ -33,6 +33,36 @@ variable "base_domain" {
   description = "Custom DNS domain (e.g. gilead.com). ROSA creates A records inside Route53 zone."
 }
 
+variable "service_cidr" {
+  type        = string
+  description = "OpenShift service network CIDR. Must not overlap VPC, pod_cidr, or host OS ranges."
+}
+
+variable "pod_cidr" {
+  type        = string
+  description = "OpenShift pod network CIDR. Must not overlap VPC, service_cidr, or host OS ranges."
+}
+
+variable "host_prefix" {
+  type        = number
+  description = "Subnet prefix length assigned to each node for pod IPs (e.g. 23 = /23 per node)."
+}
+
+variable "cluster_wait_timeout" {
+  type        = number
+  description = "Minutes to wait for the cluster to reach ready state."
+}
+
+variable "machine_pool_name" {
+  type        = string
+  description = "Name of the additional machine pool for worker nodes."
+}
+
+variable "idp_name" {
+  type        = string
+  description = "Name of the HTPasswd identity provider created in the cluster."
+}
+
 variable "worker_instance_type" {
   type        = string
   description = "EC2 instance type for worker nodes."

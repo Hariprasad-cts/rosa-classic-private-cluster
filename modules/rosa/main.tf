@@ -35,9 +35,9 @@ resource "rhcs_cluster_rosa_classic" "this" {
   availability_zones = var.availability_zones
   aws_subnet_ids     = var.private_subnet_ids
   machine_cidr       = var.vpc_cidr
-  service_cidr       = "172.30.0.0/16"
-  pod_cidr           = "10.128.0.0/14"
-  host_prefix        = 23
+  service_cidr       = var.service_cidr
+  pod_cidr           = var.pod_cidr
+  host_prefix        = var.host_prefix
 
   # Private cluster: API + Ingress NLBs are internal only
   # Access requires VPN or AWS Direct Connect into the VPC
@@ -82,17 +82,16 @@ resource "rhcs_cluster_rosa_classic" "this" {
 # Set GitHub Actions job timeout to >= 90 minutes
 resource "rhcs_cluster_wait" "this" {
   cluster = rhcs_cluster_rosa_classic.this.id
-  timeout = 60
+  timeout = var.cluster_wait_timeout
 }
 
 # Machine pool -- 5 x m5.xlarge workers for MAS
 resource "rhcs_machine_pool" "workers" {
   cluster            = rhcs_cluster_rosa_classic.this.id
-  name               = "mas-worker-pool"
-  machine_type       = var.worker_instance_type
-  replicas           = var.worker_node_count
-  availability_zones = var.availability_zones
-  disk_size          = var.worker_disk_size_gb
+  name         = var.machine_pool_name
+  machine_type = var.worker_instance_type
+  replicas     = var.worker_node_count
+  disk_size    = var.worker_disk_size_gb
 
   labels = {
     "node-role.kubernetes.io/worker" = ""
@@ -113,8 +112,7 @@ resource "random_password" "admin" {
 # For production: replace with SSO or LDAP IDP
 resource "rhcs_identity_provider" "htpasswd" {
   cluster = rhcs_cluster_rosa_classic.this.id
-  name    = "cluster-admin-idp"
-  type    = "htpasswd"
+  name = var.idp_name
 
   htpasswd = {
     users = [{

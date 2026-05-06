@@ -37,6 +37,7 @@ module "vpc" {
 module "iam" {
   source = "./modules/iam"
 
+  aws_region   = var.aws_region
   cluster_name = var.cluster_name
   tags         = var.tags
 }
@@ -69,6 +70,12 @@ module "rosa" {
   private_subnet_ids     = module.vpc.private_subnet_ids
   vpc_cidr               = var.vpc_cidr
   base_domain            = var.base_domain
+  service_cidr           = var.service_cidr
+  pod_cidr               = var.pod_cidr
+  host_prefix            = var.host_prefix
+  cluster_wait_timeout   = var.cluster_wait_timeout
+  machine_pool_name      = var.machine_pool_name
+  idp_name               = var.idp_name
   worker_instance_type   = var.worker_instance_type
   worker_node_count      = var.worker_node_count
   worker_disk_size_gb    = var.worker_disk_size_gb
