@@ -3,13 +3,13 @@
 #
 # Creates all IAM resources for ROSA Classic STS mode:
 #
-#   Installer Role    -- assumed by Red Hat installer (account 710019948333)
+#   Installer Role    -- assumed by Red Hat installer
 #   Support Role      -- assumed by Red Hat SRE
 #   ControlPlane Role -- assumed by 3 master EC2 instances
 #   Worker Role       -- assumed by 5 worker EC2 instances
 #   ControlPlane Policy + Instance Profile
-#   Worker Policy     + Instance Profile
-#   OIDC Provider     -- enables IRSA (no long-lived IAM keys in cluster)
+#   Worker Policy       + Instance Profile
+#   OIDC Provider       -- enables IRSA (no long-lived IAM keys in cluster)
 # ==============================================================================
 
 data "aws_caller_identity" "current" {}
