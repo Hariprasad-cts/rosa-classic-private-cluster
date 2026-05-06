@@ -8,17 +8,17 @@
 # GitHub Actions usage:
 #   - Non-sensitive values live here (committed to repo)
 #   - Sensitive values come from GitHub Actions secrets:
-#       TF_VAR_admin_password: ${{ secrets.ROSA_ADMIN_PASSWORD }}
-#       RHCS_TOKEN:            ${{ secrets.RHCS_TOKEN }}
+#       RHCS_TOKEN: ${{ secrets.RHCS_TOKEN }}
 #
-# Do NOT put rhcs_token or admin_password in this file.
+# Do NOT put rhcs_token or admin passwords in this file.
 # ==============================================================================
 
 # ── Core ──────────────────────────────────────────────────────────────────────
 aws_region        = "us-west-1"
 cluster_name      = "mas-rosa-dev-cluster"
 openshift_version = "4.20.18"
-create_admin_user = true
+environment       = "dev"
+project_name      = "MAS-ROSA"
 
 # ── Networking ────────────────────────────────────────────────────────────────
 vpc_cidr = "10.0.0.0/16"
@@ -38,22 +38,37 @@ pod_cidr     = "10.128.0.0/14"
 host_prefix  = 23
 
 # ── Worker Nodes ──────────────────────────────────────────────────────────────
-worker_instance_type = "m5.4xlarge"  # 4 vCPU / 16 GB RAM — ROSA minimum
-worker_node_count    = 5            # MAS Application Suite requires 5 workers for HA
-worker_disk_size_gb  = 300          # MAS requires 300 GB per worker node
+worker_instance_type = "m5.4xlarge"
+worker_node_count    = 5
+worker_disk_size_gb  = 300
 
 # ── Cluster Provisioning ──────────────────────────────────────────────────────
-machine_pool_name    = "worker-pool"
-idp_name             = "cluster-admin-idp"
+machine_pool_name = "worker-pool"
+idp_name          = "cluster-admin-idp"
+create_admin_user = true
+private           = true
+aws_private_link  = true
+multi_az          = false
+
+machine_pool_labels = {
+  "node-role.kubernetes.io/worker" = ""
+  "mas-workload"                   = "true"
+}
+
+# ── RHCS ──────────────────────────────────────────────────────────────────────
+rhcs_url = "https://api.openshift.com"
 
 # ── DNS ───────────────────────────────────────────────────────────────────────
 base_domain        = "gilead.com"
-create_hosted_zone = true   # true = new Route53 zone created for gilead.com
-hosted_zone_id     = ""     # Leave empty when create_hosted_zone = true
+create_hosted_zone = true
+hosted_zone_id     = ""
 
 # After first apply, run:
 #   terraform output route53_ns_records
 # Then add those 4 NS records at your domain registrar for gilead.com.
+
+# ── Backend ───────────────────────────────────────────────────────────────────
+state_lock_table = "rosa-terraform-lock"
 
 # ── Tags ──────────────────────────────────────────────────────────────────────
 tags = {

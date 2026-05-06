@@ -6,6 +6,46 @@ variable "cluster_name" {
 variable "create_admin_user" {
   type        = bool
   description = "Create a default cluster admin user with generated password."
+  default     = true
+}
+
+variable "private" {
+  type        = bool
+  description = "Make cluster API and Ingress endpoints private (internal NLBs only)."
+  default     = true
+}
+
+variable "aws_private_link" {
+  type        = bool
+  description = "Enable AWS PrivateLink for Red Hat SRE access."
+  default     = true
+}
+
+variable "multi_az" {
+  type        = bool
+  description = "Deploy control plane across multiple AZs."
+  default     = false
+}
+
+variable "wait_for_create_complete" {
+  type        = bool
+  description = "Block terraform apply until the cluster reaches Ready state (~40 min)."
+  default     = true
+}
+
+variable "managed_policies" {
+  type        = bool
+  description = "Use Red Hat managed STS policies instead of inline policies."
+  default     = true
+}
+
+variable "machine_pool_labels" {
+  type        = map(string)
+  description = "Kubernetes labels applied to all nodes in the worker machine pool."
+  default = {
+    "node-role.kubernetes.io/worker" = ""
+    "mas-workload"                   = "true"
+  }
 }
 
 variable "aws_region" {
@@ -58,7 +98,6 @@ variable "machine_pool_name" {
   description = "Name of the additional machine pool for worker nodes."
 }
 
-
 variable "worker_instance_type" {
   type        = string
   description = "EC2 instance type for worker nodes."
@@ -98,7 +137,6 @@ variable "oidc_endpoint_url" {
   type        = string
   description = "OIDC provider URL from iam module."
 }
-
 
 variable "tags" {
   type        = map(string)

@@ -8,10 +8,10 @@
 #   random_password            -- auto-generated admin password
 #   rhcs_identity_provider     -- HTPasswd IDP (initial access)
 #
-# Settings:
-#   private = true          -- API + Ingress NLBs are internal only
-#   aws_private_link = true -- Red Hat SRE access via AWS PrivateLink
-#   multi_az = false        -- 2-AZ workers, single control-plane zone
+# Key cluster flags (all driven by variables — no hardcoded booleans):
+#   private                  -- API + Ingress NLBs are internal only
+#   aws_private_link         -- Red Hat SRE access via AWS PrivateLink
+#   multi_az                 -- control-plane AZ spread
 #   wait_for_create_complete -- blocks until cluster reaches ready state
 # ==============================================================================
 
@@ -30,17 +30,17 @@ resource "rhcs_cluster_rosa_classic" "this" {
   pod_cidr           = var.pod_cidr
   host_prefix        = var.host_prefix
 
-  private          = true
-  aws_private_link = true
-  multi_az         = false
+  private          = var.private
+  aws_private_link = var.aws_private_link
+  multi_az         = var.multi_az
 
   compute_machine_type     = var.worker_instance_type
   replicas                 = var.worker_node_count
-  wait_for_create_complete = true
-  create_admin_user        = true
+  wait_for_create_complete = var.wait_for_create_complete
+  create_admin_user        = var.create_admin_user
 
   sts = {
-    managed_policies     = true
+    managed_policies     = var.managed_policies
     operator_role_prefix = var.cluster_name
     role_arn             = var.installer_role_arn
     support_role_arn     = var.support_role_arn
@@ -72,13 +72,7 @@ resource "rhcs_machine_pool" "workers" {
   replicas     = var.worker_node_count
   disk_size    = var.worker_disk_size_gb
 
-  labels = {
-    "node-role.kubernetes.io/worker" = ""
-    "mas-workload"                   = "true"
-  }
+  labels = var.machine_pool_labels
 
   depends_on = [rhcs_cluster_rosa_classic.this]
 }
-
-
-

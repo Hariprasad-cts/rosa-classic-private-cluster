@@ -7,13 +7,8 @@
 #   S3 stores terraform.tfstate — shared across all GitHub Actions runs.
 #   DynamoDB provides state locking — prevents concurrent apply corruption.
 #
-# Bootstrap sequence (new AWS account — run once):
-#   Step 1: terraform apply -target=aws_s3_bucket.terraform_state \
-#                           -target=aws_dynamodb_table.terraform_lock \
-#                           -var-file=dev.tfvars
-#   Step 2: Uncomment backend "s3" in providers.tf, then run:
-#           terraform init -reconfigure -var-file=dev.tfvars
-#   Step 3: Full apply — terraform apply -var-file=dev.tfvars
+# Bootstrap: the CI workflow creates these via AWS CLI before terraform init,
+# then imports them into state so Terraform manages them going forward.
 # ==============================================================================
 
 locals {
@@ -66,7 +61,7 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
 
 # DynamoDB lock table — prevents concurrent terraform apply corruption
 resource "aws_dynamodb_table" "terraform_lock" {
-  name         = "rosa-terraform-lock"
+  name         = var.state_lock_table
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "LockID"
 
@@ -76,7 +71,7 @@ resource "aws_dynamodb_table" "terraform_lock" {
   }
 
   tags = {
-    Name    = "rosa-terraform-lock"
+    Name    = var.state_lock_table
     Purpose = "Terraform state locking"
   }
 }

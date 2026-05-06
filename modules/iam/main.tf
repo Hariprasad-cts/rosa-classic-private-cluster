@@ -28,7 +28,7 @@ resource "aws_iam_role" "installer" {
     Statement = [{
       Effect = "Allow"
       Principal = {
-        AWS = "arn:${local.partition}:iam::710019948333:role/RH-Managed-OpenShift-Installer"
+        AWS = "arn:${local.partition}:iam::${var.redhat_account_id}:role/RH-Managed-OpenShift-Installer"
       }
       Action = "sts:AssumeRole"
       Condition = {
@@ -59,7 +59,7 @@ resource "aws_iam_role" "support" {
     Statement = [{
       Effect = "Allow"
       Principal = {
-        AWS = "arn:${local.partition}:iam::710019948333:role/RH-Technical-Support-Access"
+        AWS = "arn:${local.partition}:iam::${var.redhat_account_id}:role/RH-Technical-Support-Access"
       }
       Action = "sts:AssumeRole"
       Condition = {
@@ -226,7 +226,7 @@ resource "aws_iam_instance_profile" "worker" {
 resource "aws_iam_openid_connect_provider" "rosa" {
   url             = "https://rh-oidc.s3.${var.aws_region}.amazonaws.com/${var.cluster_name}"
   client_id_list  = ["openshift", "sts.amazonaws.com"]
-  thumbprint_list = ["9e99a48a9960b14926bb7f3b02e22da2b0ab7280"]
+  thumbprint_list = [var.oidc_thumbprint]
 
   tags = merge(var.tags, {
     Name         = "${var.cluster_name}-oidc-provider"
