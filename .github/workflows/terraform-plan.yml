@@ -157,7 +157,7 @@ jobs:
     name: "Apply [${{ github.event.inputs.environment }}]"
     needs: plan
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ github.event.inputs.environment }}
 
     permissions:
       id-token: write
