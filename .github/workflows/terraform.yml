@@ -18,11 +18,6 @@ on:
         options:
           - apply
           - destroy
-      confirm_destroy:
-        description: "Type DESTROY to confirm (required for destroy mode only)"
-        required: false
-        type: string
-        default: ""
 
 env:
   TF_VERSION: ${{ vars.TF_VERSION || '1.6.6' }}
@@ -52,16 +47,6 @@ jobs:
       TF_STATE_KEY:  "rosa/${{ github.event.inputs.environment }}/terraform.tfstate"
 
     steps:
-      # Destroy mode only: fail fast before doing any work
-      - name: Destroy confirmation check
-        if: github.event.inputs.mode == 'destroy'
-        run: |
-          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
-            echo "ERROR: You must type DESTROY in the confirm_destroy field."
-            exit 1
-          fi
-          echo "Destroy confirmed by ${{ github.actor }} for environment: ${{ github.event.inputs.environment }}"
-
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
