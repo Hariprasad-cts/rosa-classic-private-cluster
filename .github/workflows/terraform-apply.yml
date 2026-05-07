@@ -115,11 +115,11 @@ jobs:
             -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
             -backend-config="encrypt=true"
  
-      # ── KEY FIX: added run-id and github-token ──────────────────
+      # Artifact name matches Plan workflow upload name exactly
       - name: Download Approved Plan
         uses: actions/download-artifact@v4
         with:
-          name: "tfplan-${{ github.event.inputs.environment }}-apply"
+          name: "tfplan-${{ github.event.inputs.environment }}"
           repository: ${{ github.repository }}
           run-id: ${{ github.event.inputs.plan_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
