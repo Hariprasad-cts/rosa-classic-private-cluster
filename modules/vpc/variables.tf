@@ -38,6 +38,21 @@ variable "public_subnet_cidr" {
   description = "Single public subnet CIDR (AZ-a). NAT Gateway only — no cluster workloads."
 }
 
+variable "master_subnet_name" {
+  type        = string
+  description = "AWS Name tag for the master/private subnet in AZ-a."
+}
+
+variable "worker_subnet_name" {
+  type        = string
+  description = "AWS Name tag for the worker/private subnet in AZ-b."
+}
+
+variable "public_subnet_name" {
+  type        = string
+  description = "AWS Name tag for the public subnet (NAT Gateway)."
+}
+
 variable "tags" {
   type        = map(string)
   description = "Tags applied to all resources in this module."

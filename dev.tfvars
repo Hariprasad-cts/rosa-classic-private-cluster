@@ -32,6 +32,11 @@ private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
 # 1 public subnet — NAT Gateway only, no workloads
 public_subnet_cidr = "10.0.100.0/24"
 
+# Subnet names (AWS Name tags)
+master_subnet_name = "SN-01-NonProd-Master"
+worker_subnet_name = "SN-01-NonProd-Worker"
+public_subnet_name = "SN-01-NonProd-Public"
+
 # ── OpenShift Networking ──────────────────────────────────────────────────────
 service_cidr = "172.30.0.0/16"
 pod_cidr     = "10.128.0.0/14"

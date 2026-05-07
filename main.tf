@@ -29,6 +29,9 @@ module "vpc" {
   availability_zones   = var.availability_zones
   private_subnet_cidrs = var.private_subnet_cidrs
   public_subnet_cidr   = var.public_subnet_cidr
+  master_subnet_name   = var.master_subnet_name
+  worker_subnet_name   = var.worker_subnet_name
+  public_subnet_name   = var.public_subnet_name
   tags                 = var.tags
 }
 

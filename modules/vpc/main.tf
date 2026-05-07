@@ -29,7 +29,7 @@ resource "aws_subnet" "private_a" {
   availability_zone = var.availability_zones[0]
 
   tags = merge(var.tags, {
-    Name                              = "${var.cluster_name}-private-a"
+    Name                              = var.master_subnet_name
     "kubernetes.io/role/internal-elb" = "1"
   })
 }
@@ -41,7 +41,7 @@ resource "aws_subnet" "private_b" {
   availability_zone = var.availability_zones[1]
 
   tags = merge(var.tags, {
-    Name                              = "${var.cluster_name}-private-b"
+    Name                              = var.worker_subnet_name
     "kubernetes.io/role/internal-elb" = "1"
   })
 }
@@ -53,7 +53,7 @@ resource "aws_subnet" "public_a" {
   availability_zone = var.availability_zones[0]
 
   tags = merge(var.tags, {
-    Name                     = "${var.cluster_name}-public-a"
+    Name                     = var.public_subnet_name
     "kubernetes.io/role/elb" = "1"
   })
 }

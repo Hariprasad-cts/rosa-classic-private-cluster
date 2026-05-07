@@ -68,6 +68,21 @@ variable "public_subnet_cidr" {
   type        = string
 }
 
+variable "master_subnet_name" {
+  description = "AWS Name tag for the master/private subnet in AZ-a."
+  type        = string
+}
+
+variable "worker_subnet_name" {
+  description = "AWS Name tag for the worker/private subnet in AZ-b."
+  type        = string
+}
+
+variable "public_subnet_name" {
+  description = "AWS Name tag for the public subnet (NAT Gateway)."
+  type        = string
+}
+
 # ── OpenShift Networking ──────────────────────────────────────────────────────
 
 variable "service_cidr" {
