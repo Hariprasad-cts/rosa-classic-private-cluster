@@ -65,17 +65,70 @@ jobs:
           echo "Bucket : $BUCKET"
           echo "Region : $REGION"
  
-      # ── FIX 1: Remove prevent_destroy from backend.tf ──────────
+      # ── FIX 1: Remove prevent_destroy ──────────────────────────
       - name: Remove prevent_destroy from backend.tf
         run: |
-          echo "Patching backend.tf to remove prevent_destroy..."
           sed -i '/prevent_destroy/d' backend.tf
           echo "prevent_destroy removed successfully"
  
-      # ── FIX 2: Clear stale DynamoDB checksum ───────────────────
-      # The previous run deleted the tfstate file from S3 but DynamoDB
-      # still holds the old checksum — causing a mismatch error.
-      # We clear the Digest attribute from DynamoDB so Terraform can load state.
+      # ── FIX 2: Restore tfstate from S3 versioning ──────────────
+      # Previous run deleted the tfstate file from S3.
+      # Since versioning is enabled, we can restore the latest real version
+      # by deleting the delete marker — this brings the file back.
+      - name: Restore tfstate from S3 versioning if deleted
+        run: |
+          echo "Checking if tfstate exists: s3://$STATE_BUCKET/$TF_STATE_KEY"
+ 
+          if aws s3 ls "s3://$STATE_BUCKET/$TF_STATE_KEY" --region "$STATE_REGION" 2>/dev/null; then
+            echo "tfstate exists — no restore needed."
+          else
+            echo "tfstate not found — attempting restore from S3 versioning..."
+ 
+            # Find the delete marker for the tfstate file
+            DELETE_MARKER_ID=$(aws s3api list-object-versions \
+              --bucket "$STATE_BUCKET" \
+              --region "$STATE_REGION" \
+              --prefix "$TF_STATE_KEY" \
+              --query "DeleteMarkers[?Key=='$TF_STATE_KEY'] | sort_by(@, &LastModified) | [-1].VersionId" \
+              --output text 2>/dev/null)
+ 
+            if [ -n "$DELETE_MARKER_ID" ] && [ "$DELETE_MARKER_ID" != "None" ] && [ "$DELETE_MARKER_ID" != "null" ]; then
+              echo "Found delete marker: $DELETE_MARKER_ID — removing it to restore tfstate..."
+              aws s3api delete-object \
+                --bucket "$STATE_BUCKET" \
+                --key "$TF_STATE_KEY" \
+                --version-id "$DELETE_MARKER_ID" \
+                --region "$STATE_REGION"
+              echo "Delete marker removed — tfstate restored successfully."
+            else
+              echo "No delete marker found — tfstate is permanently gone."
+              echo "Attempting to find latest version and restore manually..."
+ 
+              # Get latest version ID
+              LATEST_VERSION=$(aws s3api list-object-versions \
+                --bucket "$STATE_BUCKET" \
+                --region "$STATE_REGION" \
+                --prefix "$TF_STATE_KEY" \
+                --query "Versions[?Key=='$TF_STATE_KEY'] | sort_by(@, &LastModified) | [-1].VersionId" \
+                --output text 2>/dev/null)
+ 
+              if [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "None" ] && [ "$LATEST_VERSION" != "null" ]; then
+                echo "Restoring from version: $LATEST_VERSION"
+                aws s3api copy-object \
+                  --bucket "$STATE_BUCKET" \
+                  --copy-source "$STATE_BUCKET/$TF_STATE_KEY?versionId=$LATEST_VERSION" \
+                  --key "$TF_STATE_KEY" \
+                  --region "$STATE_REGION"
+                echo "tfstate restored from version: $LATEST_VERSION"
+              else
+                echo "ERROR: No versions found. tfstate is permanently deleted."
+                echo "Resources must be deleted manually from AWS Console."
+                exit 1
+              fi
+            fi
+          fi
+ 
+      # ── FIX 3: Clear stale DynamoDB checksum ───────────────────
       - name: Clear stale DynamoDB state checksum
         run: |
           LOCK_KEY="$TF_STATE_KEY-md5"
@@ -88,31 +141,16 @@ jobs:
             --output json 2>/dev/null || echo "")
  
           if echo "$ITEM" | grep -q "Digest"; then
-            echo "Stale checksum found — removing Digest from DynamoDB..."
+            echo "Stale checksum found — removing..."
             aws dynamodb update-item \
               --table-name "$TF_LOCK_TABLE" \
               --region "$STATE_REGION" \
               --key "{\"LockID\": {\"S\": \"$LOCK_KEY\"}}" \
               --update-expression "REMOVE #d" \
               --expression-attribute-names "{\"#d\": \"Digest\"}"
-            echo "DynamoDB checksum cleared successfully."
+            echo "DynamoDB checksum cleared."
           else
-            echo "No stale checksum found — skipping."
-          fi
- 
-      # ── FIX 3: Restore tfstate if it was accidentally deleted ──
-      # Previous run may have deleted tfstate from S3.
-      # Check if it exists — if not, we cannot destroy via Terraform.
-      - name: Verify tfstate exists in S3
-        run: |
-          echo "Checking if tfstate exists: s3://$STATE_BUCKET/$TF_STATE_KEY"
-          if aws s3 ls "s3://$STATE_BUCKET/$TF_STATE_KEY" 2>/dev/null; then
-            echo "tfstate found — proceeding with destroy."
-          else
-            echo "ERROR: tfstate not found in S3!"
-            echo "The state file was deleted by the previous run."
-            echo "You will need to manually delete AWS resources or restore the tfstate."
-            exit 1
+            echo "No stale checksum — skipping."
           fi
  
       - name: Terraform Init
@@ -124,7 +162,6 @@ jobs:
             -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
             -backend-config="encrypt=true"
  
-      # Show what will be destroyed
       - name: Terraform Plan Destroy
         run: |
           terraform plan -destroy \
@@ -132,7 +169,6 @@ jobs:
             -input=false \
             -no-color
  
-      # Direct destroy — no saved plan — avoids stale plan error
       - name: Terraform Destroy
         run: |
           terraform destroy \
@@ -140,13 +176,11 @@ jobs:
             -auto-approve \
             -input=false
  
-      # ── AFTER DESTROY: Clean up S3 bucket versions ─────────────
-      # Only runs AFTER terraform destroy completes successfully.
-      # At this point tfstate is no longer needed so safe to empty + delete.
+      # ── Cleanup S3 after successful destroy ────────────────────
       - name: Cleanup S3 state bucket after destroy
         if: success()
         run: |
-          echo "Emptying S3 bucket after successful destroy: $STATE_BUCKET"
+          echo "Emptying and deleting S3 bucket: $STATE_BUCKET"
  
           # Delete all object versions
           VERSIONS=$(aws s3api list-object-versions \
@@ -186,9 +220,8 @@ jobs:
             done
           fi
  
-          # Delete the bucket itself
           aws s3api delete-bucket \
             --bucket "$STATE_BUCKET" \
             --region "$STATE_REGION" && \
-            echo "S3 bucket deleted: $STATE_BUCKET" || \
+            echo "S3 bucket deleted successfully." || \
             echo "Bucket delete skipped — may still have objects."
