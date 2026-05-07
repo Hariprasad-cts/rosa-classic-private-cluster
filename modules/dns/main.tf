@@ -25,7 +25,7 @@ resource "aws_route53_zone" "base_domain" {
   comment = "Managed by Terraform — ROSA cluster ${var.cluster_name}"
 
   tags = merge(var.tags, {
-    Name = var.base_domain
+    Domain = var.base_domain
   })
 }
 
