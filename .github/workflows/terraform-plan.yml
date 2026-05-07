@@ -35,7 +35,7 @@ jobs:
       RHCS_TOKEN:            ${{ secrets.TF_VAR_RHCS_TOKEN }}
       # Override via GitHub repo variables: Settings → Variables
       TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'rosa-terraform-lock' }}
-      TF_STATE_KEY:  ${{ vars.TF_STATE_KEY  || 'rosa/terraform.tfstate' }}
+      TF_STATE_KEY:  "rosa/${{ github.event.inputs.environment }}/terraform.tfstate"
 
     steps:
       - name: Checkout repository

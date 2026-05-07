@@ -26,7 +26,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       RHCS_TOKEN:            ${{ secrets.TF_VAR_RHCS_TOKEN }}
       TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'rosa-terraform-lock' }}
-      TF_STATE_KEY:  ${{ vars.TF_STATE_KEY  || 'rosa/terraform.tfstate' }}
+      TF_STATE_KEY:  "rosa/${{ github.event.inputs.environment }}/terraform.tfstate"
 
     steps:
       - uses: actions/checkout@v4
