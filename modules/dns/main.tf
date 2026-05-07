@@ -23,10 +23,6 @@ resource "aws_route53_zone" "base_domain" {
   count   = var.create_hosted_zone ? 1 : 0
   name    = var.base_domain
   comment = "Managed by Terraform — ROSA cluster ${var.cluster_name}"
-
-  tags = merge(var.tags, {
-    Domain = var.base_domain
-  })
 }
 
 # Look up an existing hosted zone (when create_hosted_zone = false)
