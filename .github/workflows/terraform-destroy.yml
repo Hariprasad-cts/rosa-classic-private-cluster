@@ -11,10 +11,6 @@ on:
           - dev
           - uat
           - prod
-      plan_run_id:
-        description: "Run ID of the Terraform Plan workflow (copy from Actions tab URL)"
-        required: true
-        type: string
       confirm_destroy:
         description: "Type DESTROY to confirm — prevents accidental deletion"
         required: true
@@ -32,7 +28,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      actions: read        # required to download artifacts across workflow runs
  
     env:
       AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -50,7 +45,8 @@ jobs:
             echo "Aborting to prevent accidental infrastructure deletion."
             exit 1
           fi
-          echo "Destroy confirmed by ${{ github.actor }} for environment: ${{ github.event.inputs.environment }}"
+          echo "Destroy confirmed by ${{ github.actor }}"
+          echo "Environment : ${{ github.event.inputs.environment }}"
  
       - uses: actions/checkout@v4
  
@@ -58,8 +54,6 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
  
-      # Resolve bucket name and region — same logic as Plan
-      # No bootstrap here — S3 and DynamoDB already created by Plan workflow
       - name: Resolve backend config
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -72,7 +66,6 @@ jobs:
           echo "Bucket : $BUCKET"
           echo "Region : $REGION"
  
-      # Init only — no bootstrap steps to avoid touching state before destroy
       - name: Terraform Init
         run: |
           terraform init -input=false \
@@ -82,15 +75,18 @@ jobs:
             -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
             -backend-config="encrypt=true"
  
-      # Download the exact destroy plan artifact from the Plan workflow run
-      - name: Download Approved Destroy Plan
-        uses: actions/download-artifact@v4
-        with:
-          name: "tfplan-${{ github.event.inputs.environment }}"
-          repository: ${{ github.repository }}
-          run-id: ${{ github.event.inputs.plan_run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Show what will be destroyed before running
+      - name: Terraform Plan Destroy
+        run: |
+          terraform plan -destroy \
+            -var-file="${{ github.event.inputs.environment }}.tfvars" \
+            -input=false \
+            -no-color
  
-      # Apply the destroy plan — no re-plan, uses exact plan from artifact
+      # Direct destroy — no saved plan — avoids stale plan error completely
       - name: Terraform Destroy
-        run: terraform apply -input=false tfplan
+        run: |
+          terraform destroy \
+            -var-file="${{ github.event.inputs.environment }}.tfvars" \
+            -auto-approve \
+            -input=false
