@@ -14,7 +14,7 @@
 # ==============================================================================
 
 # ── Core ──────────────────────────────────────────────────────────────────────
-aws_region        = "us-west-2"
+aws_region        = "us-west-1"
 cluster_name      = "mas-rosa-dev-cluster"
 openshift_version = "4.20.18"
 environment       = "dev"
