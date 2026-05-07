@@ -131,11 +131,6 @@ variable "create_admin_user" {
   type        = bool
 }
 
-variable "idp_name" {
-  description = "Name of the HTPasswd identity provider created for initial cluster access."
-  type        = string
-}
-
 variable "private" {
   description = "Make cluster API and Ingress endpoints private (internal NLBs only)."
   type        = bool
