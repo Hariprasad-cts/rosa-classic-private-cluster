@@ -44,7 +44,6 @@ worker_disk_size_gb  = 300
 
 # ── Cluster Provisioning ──────────────────────────────────────────────────────
 machine_pool_name = "worker-pool"
-idp_name          = "cluster-admin-idp"
 create_admin_user = true
 private           = true
 aws_private_link  = true
