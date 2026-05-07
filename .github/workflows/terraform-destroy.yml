@@ -284,6 +284,29 @@ jobs:
           echo "State loaded — $RESOURCE_COUNT resources tracked:"
           terraform state list
 
+      # ── FIX 6: Remove backend resources from state before destroy ─
+      # S3 bucket and DynamoDB table are managed in backend.tf.
+      # If left in state, terraform destroy tries to delete them mid-run:
+      #   - S3 delete fails  → bucket still has versioned tfstate objects
+      #   - DynamoDB deleted → Terraform can't release its own lock afterward
+      # Removing them from state keeps them alive throughout destroy so the
+      # lock and state writes work. AWS CLI cleans them up after destroy.
+      - name: Remove backend resources from Terraform state
+        run: |
+          for ADDR in \
+            aws_s3_bucket.terraform_state \
+            aws_s3_bucket_versioning.terraform_state \
+            aws_s3_bucket_server_side_encryption_configuration.terraform_state \
+            aws_s3_bucket_public_access_block.terraform_state \
+            aws_dynamodb_table.terraform_lock; do
+            if terraform state list 2>/dev/null | grep -qxF "$ADDR"; then
+              echo "Removing from state: $ADDR"
+              terraform state rm "$ADDR"
+            else
+              echo "Not in state (skipping): $ADDR"
+            fi
+          done
+
       - name: Terraform Plan Destroy
         run: |
           terraform plan -destroy \
@@ -297,3 +320,44 @@ jobs:
             -var-file="${{ github.event.inputs.environment }}.tfvars" \
             -auto-approve \
             -input=false
+
+      # ── Post-destroy backend cleanup ───────────────────────────
+      # Backend resources were removed from state above so Terraform did not
+      # delete them. Clean them up here via AWS CLI after destroy succeeds.
+      - name: Clean up S3 state bucket and DynamoDB lock table
+        if: success()
+        run: |
+          echo "Emptying S3 bucket: $STATE_BUCKET"
+          # Delete all object versions
+          VERSIONS=$(aws s3api list-object-versions \
+            --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
+            --query 'Versions[].{Key:Key,VersionId:VersionId}' \
+            --output json 2>/dev/null)
+          if [ "$VERSIONS" != "null" ] && [ -n "$VERSIONS" ]; then
+            echo "$VERSIONS" | jq -c '.[]' | while read -r obj; do
+              aws s3api delete-object \
+                --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
+                --key "$(echo "$obj" | jq -r '.Key')" \
+                --version-id "$(echo "$obj" | jq -r '.VersionId')"
+            done
+          fi
+          # Delete all delete markers
+          MARKERS=$(aws s3api list-object-versions \
+            --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
+            --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' \
+            --output json 2>/dev/null)
+          if [ "$MARKERS" != "null" ] && [ -n "$MARKERS" ]; then
+            echo "$MARKERS" | jq -c '.[]' | while read -r obj; do
+              aws s3api delete-object \
+                --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
+                --key "$(echo "$obj" | jq -r '.Key')" \
+                --version-id "$(echo "$obj" | jq -r '.VersionId')"
+            done
+          fi
+          aws s3api delete-bucket --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
+            && echo "S3 bucket deleted." || echo "S3 bucket delete skipped."
+
+          echo "Deleting DynamoDB lock table: $TF_LOCK_TABLE"
+          aws dynamodb delete-table \
+            --table-name "$TF_LOCK_TABLE" --region "$STATE_REGION" 2>/dev/null \
+            && echo "DynamoDB table deleted." || echo "DynamoDB table already gone."
