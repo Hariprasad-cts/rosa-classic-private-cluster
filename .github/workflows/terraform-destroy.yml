@@ -343,43 +343,6 @@ jobs:
             -auto-approve \
             -input=false
 
-      # ── Post-destroy backend cleanup ───────────────────────────
-      # Backend resources were removed from state above so Terraform did not
-      # delete them. Clean them up here via AWS CLI after destroy succeeds.
-      - name: Clean up S3 state bucket and DynamoDB lock table
-        if: success()
-        run: |
-          echo "Emptying S3 bucket: $STATE_BUCKET"
-          # Delete all object versions
-          VERSIONS=$(aws s3api list-object-versions \
-            --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
-            --query 'Versions[].{Key:Key,VersionId:VersionId}' \
-            --output json 2>/dev/null)
-          if [ "$VERSIONS" != "null" ] && [ -n "$VERSIONS" ]; then
-            echo "$VERSIONS" | jq -c '.[]' | while read -r obj; do
-              aws s3api delete-object \
-                --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
-                --key "$(echo "$obj" | jq -r '.Key')" \
-                --version-id "$(echo "$obj" | jq -r '.VersionId')"
-            done
-          fi
-          # Delete all delete markers
-          MARKERS=$(aws s3api list-object-versions \
-            --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
-            --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' \
-            --output json 2>/dev/null)
-          if [ "$MARKERS" != "null" ] && [ -n "$MARKERS" ]; then
-            echo "$MARKERS" | jq -c '.[]' | while read -r obj; do
-              aws s3api delete-object \
-                --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
-                --key "$(echo "$obj" | jq -r '.Key')" \
-                --version-id "$(echo "$obj" | jq -r '.VersionId')"
-            done
-          fi
-          aws s3api delete-bucket --bucket "$STATE_BUCKET" --region "$STATE_REGION" \
-            && echo "S3 bucket deleted." || echo "S3 bucket delete skipped."
-
-          echo "Deleting DynamoDB lock table: $TF_LOCK_TABLE"
-          aws dynamodb delete-table \
-            --table-name "$TF_LOCK_TABLE" --region "$STATE_REGION" 2>/dev/null \
-            && echo "DynamoDB table deleted." || echo "DynamoDB table already gone."
+      # After destroy, Terraform automatically writes an empty state back to S3.
+      # The S3 bucket and DynamoDB table are shared across dev/uat/prod and
+      # must NOT be deleted here. They persist for other environments.
