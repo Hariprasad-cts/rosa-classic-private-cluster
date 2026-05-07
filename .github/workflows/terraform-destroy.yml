@@ -179,6 +179,89 @@ jobs:
             echo "No stale lock — skipping."
           fi
  
+      # ── FIX 5: Pre-destroy VPC dependency cleanup ──────────────
+      # Terraform cannot delete a subnet while AWS resources (NAT GW, VPC
+      # endpoints, IGW) still have ENIs inside it. This step removes those
+      # dependents first using the VPC ID derived from the tfvars cluster name.
+      # All AWS CLI calls are idempotent — safe to run even if already gone.
+      - name: Pre-destroy VPC dependency cleanup
+        run: |
+          VAR_FILE="${{ github.event.inputs.environment }}.tfvars"
+          CLUSTER=$(grep -E '^cluster_name\s*=' "$VAR_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
+
+          echo "Looking up VPC for cluster: $CLUSTER"
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --region "$STATE_REGION" \
+            --filters "Name=tag:Name,Values=${CLUSTER}-vpc" \
+            --query "Vpcs[0].VpcId" \
+            --output text 2>/dev/null)
+
+          if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+            echo "VPC not found — skipping pre-destroy cleanup."
+            exit 0
+          fi
+          echo "Found VPC: $VPC_ID"
+
+          # 1. Delete NAT Gateways
+          NAT_IDS=$(aws ec2 describe-nat-gateways \
+            --region "$STATE_REGION" \
+            --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available,pending" \
+            --query "NatGateways[].NatGatewayId" \
+            --output text 2>/dev/null)
+          for NAT in $NAT_IDS; do
+            echo "Deleting NAT Gateway: $NAT"
+            aws ec2 delete-nat-gateway --region "$STATE_REGION" --nat-gateway-id "$NAT"
+          done
+          if [ -n "$NAT_IDS" ]; then
+            echo "Waiting for NAT Gateways to finish deleting..."
+            aws ec2 wait nat-gateway-deleted \
+              --region "$STATE_REGION" \
+              --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=deleting" 2>/dev/null || true
+          fi
+
+          # 2. Delete VPC Endpoints
+          ENDPOINT_IDS=$(aws ec2 describe-vpc-endpoints \
+            --region "$STATE_REGION" \
+            --filters "Name=vpc-id,Values=$VPC_ID" "Name=vpc-endpoint-state,Values=available,pending" \
+            --query "VpcEndpoints[].VpcEndpointId" \
+            --output text 2>/dev/null)
+          if [ -n "$ENDPOINT_IDS" ]; then
+            echo "Deleting VPC Endpoints: $ENDPOINT_IDS"
+            aws ec2 delete-vpc-endpoints \
+              --region "$STATE_REGION" \
+              --vpc-endpoint-ids $ENDPOINT_IDS
+          fi
+
+          # 3. Detach and delete Internet Gateway
+          IGW_ID=$(aws ec2 describe-internet-gateways \
+            --region "$STATE_REGION" \
+            --filters "Name=attachment.vpc-id,Values=$VPC_ID" \
+            --query "InternetGateways[0].InternetGatewayId" \
+            --output text 2>/dev/null)
+          if [ -n "$IGW_ID" ] && [ "$IGW_ID" != "None" ]; then
+            echo "Detaching and deleting IGW: $IGW_ID"
+            aws ec2 detach-internet-gateway \
+              --region "$STATE_REGION" \
+              --internet-gateway-id "$IGW_ID" \
+              --vpc-id "$VPC_ID"
+            aws ec2 delete-internet-gateway \
+              --region "$STATE_REGION" \
+              --internet-gateway-id "$IGW_ID"
+          fi
+
+          # 4. Release EIPs tagged to this cluster
+          EIP_ALLOC_IDS=$(aws ec2 describe-addresses \
+            --region "$STATE_REGION" \
+            --filters "Name=tag:Name,Values=${CLUSTER}-nat-eip" \
+            --query "Addresses[].AllocationId" \
+            --output text 2>/dev/null)
+          for EIP in $EIP_ALLOC_IDS; do
+            echo "Releasing EIP: $EIP"
+            aws ec2 release-address --region "$STATE_REGION" --allocation-id "$EIP" || true
+          done
+
+          echo "Pre-destroy VPC cleanup complete."
+
       - name: Terraform Init
         run: |
           terraform init -reconfigure -input=false \
