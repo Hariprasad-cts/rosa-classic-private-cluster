@@ -1,5 +1,5 @@
 name: Terraform Destroy
-
+ 
 on:
   workflow_dispatch:
     inputs:
@@ -11,30 +11,53 @@ on:
           - dev
           - uat
           - prod
-
+      plan_run_id:
+        description: "Run ID of the Terraform Plan workflow (copy from Actions tab URL)"
+        required: true
+        type: string
+      confirm_destroy:
+        description: "Type DESTROY to confirm — prevents accidental deletion"
+        required: true
+        type: string
+ 
 env:
   TF_VERSION: ${{ vars.TF_VERSION || '1.6.6' }}
-
+ 
 jobs:
   destroy:
     name: "Terraform Destroy [${{ github.event.inputs.environment }}]"
     runs-on: ubuntu-latest
     environment: production
-
+ 
+    permissions:
+      id-token: write
+      contents: read
+      actions: read        # required to download artifacts across workflow runs
+ 
     env:
       AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       RHCS_TOKEN:            ${{ secrets.TF_VAR_RHCS_TOKEN }}
       TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'rosa-terraform-lock' }}
       TF_STATE_KEY:  "rosa/${{ github.event.inputs.environment }}/terraform.tfstate"
-
+ 
     steps:
+      # ── Safety check — must type DESTROY to proceed ────────────
+      - name: Destroy Safety Check
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "ERROR: You must type DESTROY in the confirm_destroy field."
+            echo "Aborting to prevent accidental infrastructure deletion."
+            exit 1
+          fi
+          echo "Destroy confirmed by ${{ github.actor }} for environment: ${{ github.event.inputs.environment }}"
+ 
       - uses: actions/checkout@v4
-
+ 
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
-
+ 
       - name: Resolve backend config
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -46,7 +69,7 @@ jobs:
           echo "STATE_REGION=$REGION"   >> "$GITHUB_ENV"
           echo "Bucket : $BUCKET"
           echo "Region : $REGION"
-
+ 
       - name: Bootstrap S3 state bucket
         run: |
           if aws s3api head-bucket --bucket "$STATE_BUCKET" 2>/dev/null; then
@@ -76,7 +99,7 @@ jobs:
               'BlockPublicAcls=true,BlockPublicPolicy=true,IgnorePublicAcls=true,RestrictPublicBuckets=true'
             echo "Bucket created and configured."
           fi
-
+ 
       - name: Bootstrap DynamoDB lock table
         run: |
           if aws dynamodb describe-table \
@@ -96,7 +119,7 @@ jobs:
               --region     "$STATE_REGION"
             echo "DynamoDB table created."
           fi
-
+ 
       - name: Terraform Init
         run: |
           terraform init -input=false \
@@ -105,11 +128,16 @@ jobs:
             -backend-config="region=${STATE_REGION}" \
             -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
             -backend-config="encrypt=true"
-
+ 
+      # Artifact name matches Plan workflow upload: tfplan-<env>
+      # run-id and github-token are required to download across workflow runs
       - name: Download Approved Destroy Plan
         uses: actions/download-artifact@v4
         with:
-          name: "tfplan-${{ github.event.inputs.environment }}-destroy"
-
+          name: "tfplan-${{ github.event.inputs.environment }}"
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.inputs.plan_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+ 
       - name: Terraform Destroy
         run: terraform apply -input=false tfplan
