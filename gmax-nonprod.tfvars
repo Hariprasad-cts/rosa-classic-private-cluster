@@ -17,7 +17,7 @@
 aws_region        = "us-west-1"
 cluster_name      = "gmax-nonprod"
 openshift_version = "4.20.18"
-environment       = "dev"
+environment       = "Non-Prod"
 project_name      = "MAS-ROSA"
 
 # ── Networking ────────────────────────────────────────────────────────────────
