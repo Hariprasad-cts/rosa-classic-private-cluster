@@ -1,4 +1,4 @@
-name: Terraform Plan
+name: Terraform Plan & Apply
 
 on:
   workflow_dispatch:
@@ -11,50 +11,37 @@ on:
           - dev
           - uat
           - prod
-      mode:
-        description: "Plan type"
-        required: true
-        type: choice
-        options:
-          - apply
-          - destroy
 
 env:
-  # Override via GitHub repo variable: Settings → Variables → TF_VERSION
   TF_VERSION: ${{ vars.TF_VERSION || '1.6.6' }}
+
+# ── Job 1: Plan ────────────────────────────────────────────────────────────────
+# Runs terraform plan and uploads the binary plan artifact.
+# If plan succeeds, GitHub pauses and shows a "Review deployments" button.
+# Approve to proceed to apply, or dismiss to stop here.
+# ── Job 2: Apply ───────────────────────────────────────────────────────────────
+# Downloads the artifact from Job 1 (same run — state cannot change between
+# plan and apply). Runs terraform apply against the reviewed plan.
 
 jobs:
   plan:
-    name: "Terraform Plan [${{ github.event.inputs.environment }}] [${{ github.event.inputs.mode }}]"
+    name: "Plan [${{ github.event.inputs.environment }}]"
     runs-on: ubuntu-latest
 
     env:
       AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       RHCS_TOKEN:            ${{ secrets.TF_VAR_RHCS_TOKEN }}
-      # Override via GitHub repo variables: Settings → Variables
       TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'rosa-terraform-lock' }}
       TF_STATE_KEY:  "rosa/${{ github.event.inputs.environment }}/terraform.tfstate"
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Verify environment
-        run: |
-          echo "Environment : ${{ github.event.inputs.environment }}"
-          echo "Mode        : ${{ github.event.inputs.mode }}"
-          echo "Var file    : ${{ github.event.inputs.environment }}.tfvars"
-          echo "AWS_ACCESS_KEY_ID set? ${AWS_ACCESS_KEY_ID:+YES}"
-          echo "RHCS_TOKEN set?        ${RHCS_TOKEN:+YES}"
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      # Derive the S3 bucket name (uses AWS account ID) and region (from tfvars).
-      # These are written to GITHUB_ENV so all subsequent steps can use them.
       - name: Resolve backend config
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -62,13 +49,11 @@ jobs:
           REGION=$(grep -E '^aws_region\s*=' "$VAR_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
           REGION="${REGION:-${{ vars.AWS_DEFAULT_REGION || 'us-west-1' }}}"
           BUCKET="rosa-terraform-state-${ACCOUNT_ID}"
-          echo "STATE_BUCKET=$BUCKET"   >> "$GITHUB_ENV"
-          echo "STATE_REGION=$REGION"   >> "$GITHUB_ENV"
+          echo "STATE_BUCKET=$BUCKET" >> "$GITHUB_ENV"
+          echo "STATE_REGION=$REGION" >> "$GITHUB_ENV"
           echo "Bucket : $BUCKET"
           echo "Region : $REGION"
 
-      # Idempotent — skipped if bucket already exists.
-      # us-east-1 cannot use LocationConstraint (AWS restriction).
       - name: Bootstrap S3 state bucket
         run: |
           if aws s3api head-bucket --bucket "$STATE_BUCKET" 2>/dev/null; then
@@ -99,7 +84,6 @@ jobs:
             echo "Bucket created and configured."
           fi
 
-      # Idempotent — skipped if table already exists.
       - name: Bootstrap DynamoDB lock table
         run: |
           if aws dynamodb describe-table \
@@ -120,7 +104,6 @@ jobs:
             echo "DynamoDB table created."
           fi
 
-      # Partial backend config — bucket/region/key/table supplied via flags.
       - name: Terraform Init
         run: |
           terraform init -input=false \
@@ -130,18 +113,13 @@ jobs:
             -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
             -backend-config="encrypt=true"
 
-      # On the very first run the S3 bucket and DynamoDB table exist in AWS
-      # (created above) but are not yet tracked in Terraform state.
-      # Import them so the subsequent plan shows no unexpected recreations.
       - name: Import backend resources into state
         run: |
           VAR_FILE="${{ github.event.inputs.environment }}.tfvars"
 
           import_if_missing() {
             local addr="$1" id="$2"
-            local existing
-            existing=$(terraform state list 2>/dev/null || true)
-            if echo "$existing" | grep -qxF "$addr"; then
+            if terraform state list 2>/dev/null | grep -qxF "$addr"; then
               echo "Already in state: $addr"
             else
               echo "Importing: $addr (id=$id)"
@@ -160,20 +138,71 @@ jobs:
 
       - name: Terraform Plan
         run: |
-          VAR_FILE="${{ github.event.inputs.environment }}.tfvars"
-          MODE="${{ github.event.inputs.mode }}"
-          if [ "$MODE" = "destroy" ]; then
-            terraform plan -destroy -var-file="$VAR_FILE" -out=tfplan -input=false
-          elif [ "$MODE" = "apply" ]; then
-            terraform plan -var-file="$VAR_FILE" -out=tfplan -input=false
-          else
-            # plan mode: dry-run only, no artifact saved
-            terraform plan -var-file="$VAR_FILE" -input=false
-          fi
+          terraform plan \
+            -var-file="${{ github.event.inputs.environment }}.tfvars" \
+            -out=tfplan \
+            -input=false
 
-      - name: Upload Plan Artifact for Review
-        if: ${{ github.event.inputs.mode != 'plan' }}
+      - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
           name: "tfplan-${{ github.event.inputs.environment }}"
           path: tfplan
+
+  # ── Apply (optional) ─────────────────────────────────────────────────────────
+  # Gated by the "production" GitHub Environment — a "Review deployments"
+  # prompt appears in the Actions UI after plan succeeds.
+  # Approve to apply, dismiss/ignore to stop without applying.
+  apply:
+    name: "Apply [${{ github.event.inputs.environment }}]"
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: production
+
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+
+    env:
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      RHCS_TOKEN:            ${{ secrets.TF_VAR_RHCS_TOKEN }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'rosa-terraform-lock' }}
+      TF_STATE_KEY:  "rosa/${{ github.event.inputs.environment }}/terraform.tfstate"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Resolve backend config
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          VAR_FILE="${{ github.event.inputs.environment }}.tfvars"
+          REGION=$(grep -E '^aws_region\s*=' "$VAR_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
+          REGION="${REGION:-${{ vars.AWS_DEFAULT_REGION || 'us-west-1' }}}"
+          BUCKET="rosa-terraform-state-${ACCOUNT_ID}"
+          echo "STATE_BUCKET=$BUCKET" >> "$GITHUB_ENV"
+          echo "STATE_REGION=$REGION" >> "$GITHUB_ENV"
+
+      - name: Terraform Init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${STATE_BUCKET}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="region=${STATE_REGION}" \
+            -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
+            -backend-config="encrypt=true"
+
+      # Artifact from the plan job in this same run — no run_id needed,
+      # state cannot have changed between plan and apply.
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: "tfplan-${{ github.event.inputs.environment }}"
+
+      - name: Terraform Apply
+        run: terraform apply -input=false tfplan
