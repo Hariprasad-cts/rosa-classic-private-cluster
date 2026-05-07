@@ -8,9 +8,9 @@ on:
         required: true
         type: choice
         options:
-          - dev
-          - uat
-          - prod
+          - gmax-nonprod
+          - gmax-val
+          - gmax-prod
       mode:
         description: "Operation mode"
         required: true

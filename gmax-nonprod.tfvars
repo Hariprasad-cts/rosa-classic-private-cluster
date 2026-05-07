@@ -1,9 +1,9 @@
 # ==============================================================================
-# dev.tfvars — Development Environment Variable Values
+# gmax-nonprod.tfvars — Non-Production Environment Variable Values
 #
 # Loaded explicitly (NOT auto-loaded by Terraform):
-#   terraform plan  -var-file=dev.tfvars
-#   terraform apply -var-file=dev.tfvars
+#   terraform plan  -var-file=gmax-nonprod.tfvars
+#   terraform apply -var-file=gmax-nonprod.tfvars
 #
 # GitHub Actions usage:
 #   - Non-sensitive values live here (committed to repo)
@@ -15,7 +15,7 @@
 
 # ── Core ──────────────────────────────────────────────────────────────────────
 aws_region        = "us-west-1"
-cluster_name      = "mas-rosa-dev-cluster"
+cluster_name      = "gmax-nonprod"
 openshift_version = "4.20.18"
 environment       = "dev"
 project_name      = "MAS-ROSA"
