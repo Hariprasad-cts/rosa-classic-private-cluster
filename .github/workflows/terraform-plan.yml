@@ -16,7 +16,6 @@ on:
         required: true
         type: choice
         options:
-          - plan
           - apply
           - destroy
 
