@@ -133,13 +133,13 @@ jobs:
         run: |
           LOCK_KEY="$TF_STATE_KEY-md5"
           echo "Checking DynamoDB for stale checksum: $LOCK_KEY"
- 
+
           ITEM=$(aws dynamodb get-item \
             --table-name "$TF_LOCK_TABLE" \
             --region "$STATE_REGION" \
             --key "{\"LockID\": {\"S\": \"$LOCK_KEY\"}}" \
             --output json 2>/dev/null || echo "")
- 
+
           if echo "$ITEM" | grep -q "Digest"; then
             echo "Stale checksum found — removing..."
             aws dynamodb update-item \
@@ -151,6 +151,32 @@ jobs:
             echo "DynamoDB checksum cleared."
           else
             echo "No stale checksum — skipping."
+          fi
+
+      # ── FIX 4: Force unlock stale state lock ───────────────────
+      # A previous Apply/Plan run may have crashed and left an active lock
+      # in DynamoDB. Deleting the lock item directly is equivalent to
+      # terraform force-unlock and is safe when no real operation is running.
+      - name: Force unlock stale state lock
+        run: |
+          LOCK_KEY="${STATE_BUCKET}/${TF_STATE_KEY}"
+          echo "Checking DynamoDB for stale state lock: $LOCK_KEY"
+
+          ITEM=$(aws dynamodb get-item \
+            --table-name "$TF_LOCK_TABLE" \
+            --region "$STATE_REGION" \
+            --key "{\"LockID\": {\"S\": \"$LOCK_KEY\"}}" \
+            --output json 2>/dev/null || echo "")
+
+          if [ -n "$ITEM" ] && [ "$ITEM" != "{}" ]; then
+            echo "Stale lock found — force unlocking..."
+            aws dynamodb delete-item \
+              --table-name "$TF_LOCK_TABLE" \
+              --region "$STATE_REGION" \
+              --key "{\"LockID\": {\"S\": \"$LOCK_KEY\"}}"
+            echo "State lock cleared."
+          else
+            echo "No stale lock — skipping."
           fi
  
       - name: Terraform Init
