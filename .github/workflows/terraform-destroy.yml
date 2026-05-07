@@ -225,6 +225,8 @@ jobs:
           echo "Found VPC: $VPC_ID"
 
           # 1. Delete NAT Gateways
+          # Wait per-ID: filter-based wait hangs once gateway leaves "deleting"
+          # and stops matching the filter — ID-based wait polls until "deleted".
           NAT_IDS=$(aws ec2 describe-nat-gateways \
             --region "$STATE_REGION" \
             --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available,pending" \
@@ -234,12 +236,13 @@ jobs:
             echo "Deleting NAT Gateway: $NAT"
             aws ec2 delete-nat-gateway --region "$STATE_REGION" --nat-gateway-id "$NAT"
           done
-          if [ -n "$NAT_IDS" ]; then
-            echo "Waiting for NAT Gateways to finish deleting..."
+          for NAT in $NAT_IDS; do
+            echo "Waiting for NAT Gateway deleted: $NAT"
             aws ec2 wait nat-gateway-deleted \
               --region "$STATE_REGION" \
-              --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=deleting" 2>/dev/null || true
-          fi
+              --nat-gateway-ids "$NAT" 2>/dev/null || true
+            echo "NAT Gateway reached deleted state: $NAT"
+          done
 
           # 2. Delete VPC Endpoints
           ENDPOINT_IDS=$(aws ec2 describe-vpc-endpoints \
