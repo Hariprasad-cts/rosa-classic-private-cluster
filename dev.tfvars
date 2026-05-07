@@ -24,7 +24,7 @@ project_name      = "MAS-ROSA"
 vpc_cidr = "10.0.0.0/16"
 
 # Exactly 2 AZs (multi_az = false, but workers span both private subnets)
-availability_zones = ["us-west-1a", "us-west-1b"]
+availability_zones = ["us-west-1b", "us-west-1b"]
 
 # 2 private subnets — one per AZ — ROSA masters and workers run here
 private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
