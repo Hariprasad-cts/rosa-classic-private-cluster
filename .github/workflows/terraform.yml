@@ -347,16 +347,66 @@ jobs:
           name: "tfplan-${{ github.event.inputs.environment }}-${{ github.event.inputs.mode }}"
           path: tfplan
 
-  # ── Job 2: Execute (Apply or Destroy) ────────────────────────────────────────
-  # Gated by GitHub Environment — "Review deployments" appears after plan succeeds.
-  # Approve to execute, dismiss to stop without changes.
-  # terraform apply handles both modes: apply executes the plan as-is,
-  # destroy executes the -destroy plan saved by the plan job.
-  execute:
-    name: "${{ github.event.inputs.mode == 'destroy' && 'Destroy' || 'Apply' }} [${{ github.event.inputs.environment }}]"
+  # ── Job 2: Preflight (apply mode only) ──────────────────────────────────────
+  # Runs ROSA quota and permissions checks after plan so we know what will be
+  # created before committing. If checks fail the approval gate never appears
+  # and nothing gets applied. Skipped automatically for destroy mode.
+  preflight:
+    name: "Preflight [${{ github.event.inputs.environment }}]"
     needs: plan
     runs-on: ubuntu-latest
+    if: github.event.inputs.mode == 'apply'
+
+    env:
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      RHCS_TOKEN:            ${{ secrets.TF_VAR_RHCS_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve region
+        run: |
+          VAR_FILE="${{ github.event.inputs.environment }}.tfvars"
+          REGION=$(grep -E '^aws_region\s*=' "$VAR_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
+          REGION="${REGION:-${{ vars.AWS_DEFAULT_REGION || 'us-west-1' }}}"
+          echo "STATE_REGION=$REGION" >> "$GITHUB_ENV"
+
+      - name: Install ROSA CLI
+        run: |
+          curl -sLo rosa.tar.gz \
+            https://mirror.openshift.com/pub/openshift-v4/clients/rosa/latest/rosa-linux.tar.gz
+          tar -xzf rosa.tar.gz
+          sudo mv rosa /usr/local/bin/
+          rosa version
+
+      - name: ROSA login
+        run: rosa login --token="$RHCS_TOKEN"
+
+      - name: Verify AWS quotas
+        run: |
+          echo "Running: rosa verify quota --region=$STATE_REGION"
+          rosa verify quota --region="$STATE_REGION"
+
+      - name: Verify IAM permissions
+        run: |
+          echo "Running: rosa verify permissions --region=$STATE_REGION"
+          rosa verify permissions --region="$STATE_REGION"
+
+  # ── Job 3: Execute (Apply or Destroy) ────────────────────────────────────────
+  # Gated by GitHub Environment — "Review deployments" appears after preflight
+  # passes (apply) or plan succeeds (destroy).
+  # Approve to execute, dismiss to stop without changes.
+  execute:
+    name: "${{ github.event.inputs.mode == 'destroy' && 'Destroy' || 'Apply' }} [${{ github.event.inputs.environment }}]"
+    needs: [plan, preflight]
+    runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment }}
+    # Run if plan succeeded AND (preflight passed OR preflight was skipped for destroy)
+    if: |
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.preflight.result == 'success' || needs.preflight.result == 'skipped')
 
     permissions:
       id-token: write
