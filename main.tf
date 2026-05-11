@@ -1,13 +1,16 @@
 # ==============================================================================
 # main.tf — Root Module
 #
-# Orchestrates 4 modules in the correct order:
+# Orchestrates 3 modules in the correct order:
 #
-#   +----------+    +----------+    +----------+    +----------+
-#   |  module  |    |  module  |    |  module  |    |  module  |
-#   |   vpc    |--->|   iam    |--->|   rosa   |<---|   dns    |
-#   +----------+    +----------+    +----------+    +----------+
-#   Networking      IAM + OIDC      Cluster          Route53 zone
+#   +----------+    +----------+    +----------+
+#   |  module  |    |  module  |    |  module  |
+#   |   iam    |--->|   rosa   |<---|   dns    |
+#   +----------+    +----------+    +----------+
+#   IAM + OIDC      Cluster          Route53 zone
+#
+# VPC is pre-provisioned by the AWS team. This module reads the existing
+# VPC and subnets via data sources — it does not create any networking.
 #
 # Additionally, two root-level resource files:
 #   backend.tf      -- S3 + DynamoDB for remote state (bootstrap first)
@@ -17,25 +20,12 @@
 # This retrieves information about the AWS account that Terraform is currently running
 data "aws_caller_identity" "current" {}
 
-# Module 1: VPC
-# Creates: VPC, 2 private subnets, 1 public subnet, IGW, NAT GW,
-#          route tables, VPC endpoints (S3/EC2/STS/ELB/ECR x2)
-module "vpc" {
-  source = "./modules/vpc"
-
-  cluster_name         = var.cluster_name
-  aws_region           = var.aws_region
-  vpc_cidr             = var.vpc_cidr
-  availability_zones   = var.availability_zones
-  private_subnet_cidrs = var.private_subnet_cidrs
-  public_subnet_cidr   = var.public_subnet_cidr
-  master_subnet_name   = var.master_subnet_name
-  worker_subnet_name   = var.worker_subnet_name
-  public_subnet_name   = var.public_subnet_name
-  tags                 = var.tags
+# Look up the pre-existing VPC to get its CIDR (used as ROSA machine_cidr)
+data "aws_vpc" "existing" {
+  id = var.vpc_id
 }
 
-# Module 2: IAM
+# Module 1: IAM
 # Creates: Installer/Support/ControlPlane/Worker IAM roles + policies +
 #          instance profiles + OIDC provider (enables IRSA)
 module "iam" {
@@ -46,7 +36,7 @@ module "iam" {
   tags         = var.tags
 }
 
-# Module 3: DNS
+# Module 2: DNS
 # Creates: Route53 public hosted zone for gilead.com (new account)
 # After apply: add the output NS records to your domain registrar
 module "dns" {
@@ -59,7 +49,7 @@ module "dns" {
   tags               = var.tags
 }
 
-# Module 4: ROSA Cluster
+# Module 3: ROSA Cluster
 # Creates: ROSA Classic cluster (private, 5 workers), machine pool,
 #          cluster-admin user
 # This apply blocks for ~35-45 min on first run.
@@ -71,8 +61,8 @@ module "rosa" {
   aws_region             = var.aws_region
   openshift_version      = var.openshift_version
   availability_zones     = var.availability_zones
-  private_subnet_ids       = module.vpc.private_subnet_ids
-  vpc_cidr                 = var.vpc_cidr
+  private_subnet_ids       = var.private_subnet_ids
+  vpc_cidr                 = data.aws_vpc.existing.cidr_block
   base_domain              = var.base_domain
   service_cidr             = var.service_cidr
   pod_cidr                 = var.pod_cidr
@@ -94,7 +84,6 @@ module "rosa" {
   tags                     = var.tags
 
   depends_on = [
-    module.vpc,
     module.iam,
     module.dns,
     null_resource.rosa_preflight_check,

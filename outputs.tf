@@ -6,26 +6,16 @@
 #   terraform output -raw admin_password   (for sensitive values)
 # ==============================================================================
 
-# VPC
+# VPC (pre-provisioned by AWS team — outputs reflect what was passed in)
 
 output "vpc_id" {
-  description = "VPC ID"
-  value       = module.vpc.vpc_id
+  description = "VPC ID used by the ROSA cluster."
+  value       = var.vpc_id
 }
 
 output "private_subnet_ids" {
-  description = "Private subnet IDs -- ROSA master and worker nodes run here."
-  value       = module.vpc.private_subnet_ids
-}
-
-output "public_subnet_id" {
-  description = "Public subnet ID -- hosts the NAT Gateway only."
-  value       = module.vpc.public_subnet_id
-}
-
-output "nat_gateway_public_ip" {
-  description = "Public IP of the NAT Gateway. Add to allowlists for outbound ROSA traffic."
-  value       = module.vpc.nat_gateway_public_ip
+  description = "Private subnet IDs where ROSA master and worker nodes run."
+  value       = var.private_subnet_ids
 }
 
 # IAM

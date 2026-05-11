@@ -77,6 +77,6 @@ state_lock_table = "rosa-terraform-lock"
 # ── Tags ──────────────────────────────────────────────────────────────────────
 tags = {
   Owner       = "terraform"
-  Environment = "dev"
+  Environment = "Non-Prod"
   Domain      = "gilead"
 }

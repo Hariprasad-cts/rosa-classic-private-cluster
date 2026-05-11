@@ -42,45 +42,32 @@ variable "project_name" {
 }
 
 # ── Networking ────────────────────────────────────────────────────────────────
+# VPC is pre-provisioned by the AWS team. Provide the IDs and Terraform will
+# read the existing resources via data sources — nothing is created here.
 
-variable "vpc_cidr" {
-  description = "CIDR block for the VPC. Must be at least /16 for ROSA."
+variable "vpc_id" {
+  description = "ID of the pre-existing VPC provisioned by the AWS team."
   type        = string
 }
 
+variable "private_subnet_ids" {
+  description = "IDs of the pre-existing private subnets (one per AZ) where ROSA masters and workers will run."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.private_subnet_ids) == 2
+    error_message = "Exactly 2 private subnet IDs are required (one per availability zone)."
+  }
+}
+
 variable "availability_zones" {
-  description = "Exactly 2 availability zones. Workers spread across both; single control-plane AZ."
+  description = "Exactly 2 availability zones matching the provided private subnets."
   type        = list(string)
 
   validation {
     condition     = length(var.availability_zones) == 2
     error_message = "Exactly 2 availability zones are required."
   }
-}
-
-variable "private_subnet_cidrs" {
-  description = "CIDR blocks for the 2 private subnets -- one per AZ. ROSA workers/masters run here."
-  type        = list(string)
-}
-
-variable "public_subnet_cidr" {
-  description = "CIDR block for the single public subnet. Hosts the NAT Gateway only."
-  type        = string
-}
-
-variable "master_subnet_name" {
-  description = "AWS Name tag for the master/private subnet in AZ-a."
-  type        = string
-}
-
-variable "worker_subnet_name" {
-  description = "AWS Name tag for the worker/private subnet in AZ-b."
-  type        = string
-}
-
-variable "public_subnet_name" {
-  description = "AWS Name tag for the public subnet (NAT Gateway)."
-  type        = string
 }
 
 # ── OpenShift Networking ──────────────────────────────────────────────────────
